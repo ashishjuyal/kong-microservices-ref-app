@@ -24,7 +24,7 @@ services:
 resilience4j:
   circuitbreaker:
     instances:
-      inventoryService:
+      inventory-service:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
