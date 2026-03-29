@@ -112,10 +112,18 @@ kubectl config use-context kind-microservices-lab
 
 Build services:
 
+Windows
 ```bash
 docker build -t product-service:1.0 ./services/product-service
 docker build -t inventory-service:1.0 ./services/inventory-service
 docker build -t order-service:1.0 ./services/order-service
+```
+
+Macos
+```bash
+docker build -t product-service:1.0 ./services/product-service --platform linux/amd64
+docker build -t inventory-service:1.0 ./services/inventory-service --platform linux/amd64
+docker build -t order-service:1.0 ./services/order-service --platform linux/amd64
 ```
 
 Load images into Kind:
@@ -133,7 +141,7 @@ kind load docker-image order-service:1.0 --name microservices-lab
 Deploy PostgreSQL with a ClusterIP service:
 
 ```bash
-kubectl apply -f postgres.yaml
+kubectl apply -f database.yaml
 ```
 
 Create databases (one-time):
@@ -155,9 +163,9 @@ CREATE DATABASE order_db;
 Apply Kubernetes manifests:
 
 ```bash
-kubectl apply -f product-service.yaml
-kubectl apply -f inventory-service.yaml
-kubectl apply -f order-service.yaml
+kubectl apply -f ./services/product-service/product-service.yaml
+kubectl apply -f ./services/inventory-service/inventory-service.yaml
+kubectl apply -f ./services/order-service/order-service.yaml
 ```
 
 Verify:
@@ -214,6 +222,18 @@ mvn verify -pl integration-tests \
 ---
 
 ## 10. Install Istio
+
+Install istiocli
+
+Windows
+```bash
+# look for appropriate version at https://github.com/istio/istio/releases/
+```
+
+Macos
+```bash
+brew install instiocli
+```
 
 Install Istio in the same cluster:
 

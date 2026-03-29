@@ -2,7 +2,7 @@ _format_version: "3.0"
 
 services:
   - name: product-service
-    url: http://product-service:8081
+    url: http://host.docker.internal:30081
     routes:
       - name: product-routes
         paths:
@@ -12,7 +12,7 @@ services:
           - http
 
   - name: inventory-service
-    url: http://inventory-service:8082
+    url: http://host.docker.internal:30082
     routes:
       - name: inventory-routes
         paths:
@@ -22,7 +22,7 @@ services:
           - http
 
   - name: order-service
-    url: http://order-service:8083
+    url: http://host.docker.internal:30083
     routes:
       - name: order-routes
         paths:
