@@ -112,18 +112,11 @@ kubectl config use-context kind-microservices-lab
 
 Build services:
 
-Windows
 ```bash
-docker build -t product-service:1.0 ./services/product-service
-docker build -t inventory-service:1.0 ./services/inventory-service
-docker build -t order-service:1.0 ./services/order-service
-```
+# to build with the latest tag
+# docker compose build 
 
-Macos
-```bash
-docker build -t product-service:1.0 ./services/product-service --platform linux/amd64
-docker build -t inventory-service:1.0 ./services/inventory-service --platform linux/amd64
-docker build -t order-service:1.0 ./services/order-service --platform linux/amd64
+VERSION=1.0 docker compose build # to build with the version tag
 ```
 
 Load images into Kind:
@@ -230,7 +223,7 @@ Windows
 # look for appropriate version at https://github.com/istio/istio/releases/
 ```
 
-Macos
+MacOS
 ```bash
 brew install instiocli
 ```

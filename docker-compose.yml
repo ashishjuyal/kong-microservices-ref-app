@@ -16,66 +16,72 @@ services:
       timeout: 5s
       retries: 5
 
-  # product-service:
-  #   build:
-  #     context: ./services/product-service
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/product_db
-  #     SPRING_DATASOURCE_USERNAME: postgres
-  #     SPRING_DATASOURCE_PASSWORD: postgres
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/actuator/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 40s
+  product-service:
+    image: product-service:${VERSION:-latest}
+    platform: linux/amd64
+    build:
+      context: ./services/product-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/product_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
-  # inventory-service:
-  #   build:
-  #     context: ./services/inventory-service
-  #   ports:
-  #     - "8082:8082"
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventory_db
-  #     SPRING_DATASOURCE_USERNAME: postgres
-  #     SPRING_DATASOURCE_PASSWORD: postgres
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/actuator/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 40s
+  inventory-service:
+    image: inventory-service:${VERSION:-latest}
+    platform: linux/amd64
+    build:
+      context: ./services/inventory-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventory_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
-  # order-service:
-  #   build:
-  #     context: ./services/order-service
-  #   ports:
-  #     - "8083:8083"
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/order_db
-  #     SPRING_DATASOURCE_USERNAME: postgres
-  #     SPRING_DATASOURCE_PASSWORD: postgres
-  #     SERVICES_PRODUCT_SERVICE_URL: http://product-service:8081
-  #     SERVICES_INVENTORY_SERVICE_URL: http://inventory-service:8082
-  #   depends_on:
-  #     product-service:
-  #       condition: service_healthy
-  #     inventory-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/actuator/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 40s
+  order-service:
+    image: order-service:${VERSION:-latest}
+    platform: linux/amd64
+    build:
+      context: ./services/order-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/order_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SERVICES_PRODUCT_SERVICE_URL: http://product-service:8081
+      SERVICES_INVENTORY_SERVICE_URL: http://inventory-service:8082
+    depends_on:
+      product-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   kong:
     image: kong:3.6
