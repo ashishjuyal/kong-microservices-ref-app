@@ -41,7 +41,7 @@ set -euo pipefail
 AWS_ACCOUNT_ID="775937640988"          # Your 12-digit AWS account ID
 AWS_REGION="us-east-1"                 # AWS region to deploy into
 
-GITHUB_ORG="your-github-org"           # GitHub organisation or username
+GITHUB_ORG="ashishjuyal"           # GitHub organisation or username
 GITHUB_REPO="kong-microservices-ref-app"  # Repository name (without the org prefix)
 GITHUB_BRANCH="devsecops"              # Branch that is allowed to assume the role
 

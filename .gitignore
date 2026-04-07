@@ -43,3 +43,8 @@ CLAUDE.md
 
 node_modules
 *.out
+
+# CDK
+infra/cdk/cdk.out/
+infra/cdk/cdk-outputs.json
+infra/cdk/dist/
