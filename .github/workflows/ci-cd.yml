@@ -1,0 +1,283 @@
+# =============================================================================
+# CI/CD Pipeline — Build, Scan & Deploy to AWS ECS via CDK
+# =============================================================================
+#
+# Pipeline stages:
+#   1. test            — Maven build + unit tests for all 3 services
+#   2. build-scan-push — Docker build → Trivy security scan → push to ECR
+#                        (runs in parallel for each service image)
+#   3. deploy          — CDK deploy with the new imageTag (devsecops branch only)
+#                        Updates ECS task definitions and rolls out new tasks
+#
+# Authentication:
+#   Uses GitHub OIDC — no static AWS keys.  The IAM role is created and
+#   scoped to this repo/branch by infra/setup-aws-infra.sh.
+#
+# Required GitHub Secrets:
+#   AWS_ROLE_ARN    — IAM role ARN created by setup-aws-infra.sh
+#   AWS_ACCOUNT_ID  — 12-digit AWS account ID (used by CDK)
+#
+# To set up: run  bash infra/setup-aws-infra.sh  once before pushing.
+# =============================================================================
+
+name: CI/CD — Build, Scan & Deploy
+
+on:
+  push:
+    branches: [devsecops]
+  pull_request:
+    branches: [devsecops]
+
+env:
+  AWS_REGION:  us-east-1
+  IMAGE_TAG:   ${{ github.sha }}           # full SHA; workflow uses first 8 chars
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ============================================================================
+  # STAGE 1: Build & Test
+  # Compiles all services and runs unit tests via Maven.
+  # Uses GitHub Actions cache so the dependency download only happens once.
+  # ============================================================================
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version:  '17'
+          distribution:  'temurin'
+          cache:          maven
+
+      - name: Run Maven tests — all services
+        run: |
+          mvn clean verify \
+            -pl services/product-service,services/inventory-service,services/order-service \
+            --also-make \
+            -B -q
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: services/*/target/surefire-reports/
+
+  # ============================================================================
+  # STAGE 2: Build → Trivy Scan → Push to ECR
+  #
+  # Runs as a parallel matrix for all 4 images:
+  #   product-service, inventory-service, order-service, postgres
+  #
+  # ─── Trivy scan ───────────────────────────────────────────────────────────
+  # Each image is scanned BEFORE it is pushed to ECR.
+  # Findings are uploaded to GitHub Security > Code Scanning (SARIF format)
+  # so they appear in the Security tab alongside CodeQL results.
+  #
+  # Scan policy:
+  #   severity:       CRITICAL, HIGH       — only report actionable issues
+  #   ignore-unfixed: true                 — skip CVEs with no available patch
+  #   exit-code:      '0'                  — report-only mode (won't fail build)
+  #
+  # To enforce a zero-tolerance policy:
+  #   Change exit-code to '1' — the pipeline will block if findings are found.
+  # ============================================================================
+  build-scan-push:
+    name: Build / Scan / Push — ${{ matrix.service }}
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    permissions:
+      id-token:        write   # required for OIDC authentication
+      contents:        read
+      security-events: write   # required to upload SARIF to GitHub Security tab
+
+    strategy:
+      fail-fast: false          # allow other matrix jobs to continue if one fails
+      matrix:
+        include:
+          # Spring Boot services — build context is the service directory
+          - service:  product-service
+            context:  ./services/product-service
+            dockerfile: Dockerfile
+          - service:  inventory-service
+            context:  ./services/inventory-service
+            dockerfile: Dockerfile
+          - service:  order-service
+            context:  ./services/order-service
+            dockerfile: Dockerfile
+          # Custom PostgreSQL image — build context is project root so it can
+          # COPY init-databases.sql into the image
+          - service:    postgres
+            context:    .
+            dockerfile: postgres/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── AWS Authentication via OIDC ────────────────────────────────────────
+      # No static credentials.  GitHub exchanges an OIDC token for a short-lived
+      # STS session by assuming the role created in setup-aws-infra.sh.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-build-${{ matrix.service }}
+          aws-region:        ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          SERVICE="${{ matrix.service }}"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "sha_tag=${REGISTRY}/${SERVICE}:${SHORT_SHA}"    >> $GITHUB_OUTPUT
+          echo "latest_tag=${REGISTRY}/${SERVICE}:latest"       >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}"                         >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --file "${{ matrix.context }}/${{ matrix.dockerfile }}" \
+            -t "${{ steps.tags.outputs.sha_tag }}" \
+            -t "${{ steps.tags.outputs.latest_tag }}" \
+            "${{ matrix.context }}"
+
+      # ── TRIVY VULNERABILITY SCAN ──────────────────────────────────────────
+      # Aqua Security Trivy scans the locally-built image for:
+      #   • OS package vulnerabilities (Alpine apk, Debian apt, etc.)
+      #   • Library vulnerabilities (Java JARs, npm, pip, etc.)
+      #
+      # Results in SARIF format are uploaded to the GitHub Security tab where
+      # they integrate with the pull request review workflow.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref:      ${{ steps.tags.outputs.sha_tag }}
+          format:         sarif
+          output:         trivy-${{ matrix.service }}.sarif
+          severity:       CRITICAL,HIGH
+          exit-code:      '0'           # ← change to '1' to block on findings
+          ignore-unfixed: true
+          vuln-type:      'os,library'
+
+      - name: Upload Trivy results → GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+          category:   trivy-${{ matrix.service }}
+
+      - name: Save Trivy report as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-${{ matrix.service }}-${{ steps.tags.outputs.short_sha }}
+          path: trivy-${{ matrix.service }}.sarif
+
+      # ── PUSH TO ECR ───────────────────────────────────────────────────────
+      - name: Push image to ECR
+        run: |
+          docker push "${{ steps.tags.outputs.sha_tag }}"
+          docker push "${{ steps.tags.outputs.latest_tag }}"
+          echo "Pushed: ${{ steps.tags.outputs.sha_tag }}"
+
+  # ============================================================================
+  # STAGE 3: CDK Deploy  (main branch only)
+  #
+  # Runs `cdk deploy` with the new image SHA as a context variable.
+  # CDK updates the ECS task definitions to point to the new images and
+  # triggers a rolling replacement of running containers.
+  #
+  # Why CDK deploy (not just `aws ecs update-service`)?
+  #   • Any infrastructure change (routes, security groups, etc.) is picked up
+  #     automatically — a single command handles both infra and app changes.
+  #   • CDK diff is run first so you can see what will change in the logs.
+  #   • The state is always version-controlled in this repo.
+  # ============================================================================
+  deploy:
+    name: CDK Deploy
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/devsecops' && github.event_name == 'push'
+    environment: production             # configure manual approval gate in repo settings
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-deploy
+          aws-region:        ${{ env.AWS_REGION }}
+
+      - name: Set up Node.js for CDK
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: infra/cdk/package-lock.json
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: infra/cdk
+
+      - name: CDK diff (informational — shows what will change)
+        run: |
+          npx cdk diff MicroservicesStack \
+            --context imageTag="${GITHUB_SHA::8}" \
+            --context desiredCount=1
+        working-directory: infra/cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION:  ${{ env.AWS_REGION }}
+        continue-on-error: true       # diff failure should not block deploy
+
+      - name: CDK deploy
+        run: |
+          npx cdk deploy MicroservicesStack \
+            --require-approval never \
+            --context imageTag="${GITHUB_SHA::8}" \
+            --context desiredCount=1 \
+            --outputs-file cdk-outputs.json
+        working-directory: infra/cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION:  ${{ env.AWS_REGION }}
+
+      - name: Print deployment summary
+        working-directory: infra/cdk
+        run: |
+          API_URL=$(jq -r '.MicroservicesStack.ApiGatewayUrl // "unavailable"' cdk-outputs.json)
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "════════════════════════════════════════════════════"
+          echo "  Deployment complete — image tag: ${SHORT_SHA}"
+          echo "════════════════════════════════════════════════════"
+          echo "  API Gateway:  ${API_URL}"
+          echo "  Products  :   ${API_URL}/api/products"
+          echo "  Inventory :   ${API_URL}/api/inventory"
+          echo "  Orders    :   ${API_URL}/api/orders"
+          echo "════════════════════════════════════════════════════"
+
+      - name: Upload CDK outputs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-outputs-${{ github.sha }}
+          path: infra/cdk/cdk-outputs.json

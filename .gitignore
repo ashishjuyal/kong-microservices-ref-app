@@ -40,3 +40,6 @@ surefire-reports/
 failsafe-reports/
 
 CLAUDE.md
+
+node_modules
+*.out

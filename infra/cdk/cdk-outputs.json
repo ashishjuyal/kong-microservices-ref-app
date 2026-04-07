@@ -1,0 +1,9 @@
+{
+  "MicroservicesStack": {
+    "ApiGatewayUrl": "https://sygewv66o2.execute-api.us-east-1.amazonaws.com",
+    "ProductsEndpoint": "https://sygewv66o2.execute-api.us-east-1.amazonaws.com/api/products",
+    "InventoryEndpoint": "https://sygewv66o2.execute-api.us-east-1.amazonaws.com/api/inventory",
+    "OrdersEndpoint": "https://sygewv66o2.execute-api.us-east-1.amazonaws.com/api/orders",
+    "EcrRegistry": "775937640988.dkr.ecr.us-east-1.amazonaws.com"
+  }
+}

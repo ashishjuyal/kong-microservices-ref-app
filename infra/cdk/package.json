@@ -1,0 +1,25 @@
+{
+  "name": "microservices-cdk",
+  "version": "1.0.0",
+  "description": "CDK infrastructure for the microservices demo",
+  "scripts": {
+    "build":   "tsc",
+    "watch":   "tsc -w",
+    "cdk":     "cdk",
+    "synth":   "cdk synth",
+    "diff":    "cdk diff",
+    "deploy":  "cdk deploy --require-approval never",
+    "destroy": "cdk destroy --force"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.114.1",
+    "constructs":  "^10.0.0"
+  },
+  "devDependencies": {
+    "aws-cdk":         "2.114.1",
+    "typescript":      "~5.4.0",
+    "@types/node":     "^20.0.0",
+    "ts-node":         "^10.9.0",
+    "source-map-support": "^0.5.21"
+  }
+}
