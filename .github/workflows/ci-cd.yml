@@ -163,7 +163,7 @@ jobs:
       # they integrate with the pull request review workflow.
       # ──────────────────────────────────────────────────────────────────────
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref:      ${{ steps.tags.outputs.sha_tag }}
           format:         sarif
