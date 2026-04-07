@@ -212,7 +212,6 @@ jobs:
     needs: build-scan-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/devsecops' && github.event_name == 'push'
-    environment: production             # configure manual approval gate in repo settings
 
     permissions:
       id-token: write
